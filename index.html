@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rust Roadmap → MCP Server</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f14; --surface: #151820; --surface2: #1c2030;
+    --border: #2a2f42; --text: #e2e8f0; --muted: #64748b; --accent: #e07b39;
+    --col-todo: #1c2030; --col-todo-border: #2a2f42; --col-todo-text: #94a3b8;
+    --col-active: #1a2535; --col-active-border: #3b82f6; --col-active-text: #93c5fd;
+    --col-done: #0f2318; --col-done-border: #22c55e; --col-done-text: #86efac;
+    --col-locked: #12121a; --col-locked-border: #1e2030; --col-locked-text: #374151;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+  /* SETUP OVERLAY */
+  #setup-overlay {
+    position: fixed; inset: 0; background: rgba(13,15,20,0.97);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; backdrop-filter: blur(8px);
+  }
+  #setup-overlay.hidden { display: none; }
+  .setup-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 2rem 2.5rem; max-width: 480px; width: 90%;
+  }
+  .setup-card h2 {
+    font-family: 'JetBrains Mono', monospace; font-size: 1rem;
+    color: var(--accent); margin-bottom: 0.5rem;
+  }
+  .setup-card p { font-size: 0.82rem; color: var(--muted); line-height: 1.6; margin-bottom: 1.25rem; }
+  .setup-card a { color: var(--accent); text-decoration: none; }
+  .setup-card a:hover { text-decoration: underline; }
+  .setup-steps { margin-bottom: 1.5rem; }
+  .setup-step {
+    display: flex; gap: 10px; align-items: flex-start;
+    font-size: 0.78rem; color: var(--muted); margin-bottom: 0.6rem; line-height: 1.5;
+  }
+  .step-num {
+    background: var(--border); border-radius: 50%;
+    width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+    flex-shrink: 0; margin-top: 1px; color: var(--text);
+  }
+  .setup-input-wrap { margin-bottom: 1rem; }
+  .setup-input-wrap label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; }
+  .setup-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 7px; padding: 9px 12px; color: var(--text);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+    outline: none; transition: border-color 0.15s;
+  }
+  .setup-input:focus { border-color: var(--accent); }
+  .setup-btn {
+    width: 100%; background: var(--accent); border: none; border-radius: 7px;
+    padding: 10px; color: #fff; font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+  }
+  .setup-btn:hover { opacity: 0.88; }
+  .setup-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .setup-error { font-size: 0.75rem; color: #f87171; margin-top: 8px; display: none; }
+  .setup-skip { text-align: center; margin-top: 12px; }
+  .setup-skip button {
+    background: none; border: none; color: var(--muted); font-size: 0.75rem;
+    cursor: pointer; text-decoration: underline;
+  }
+
+  /* HEADER */
+  header {
+    padding: 1.25rem 2.5rem; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;
+    position: sticky; top: 0; background: rgba(13,15,20,0.95);
+    backdrop-filter: blur(10px); z-index: 100;
+  }
+  .logo { font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 700; color: var(--accent); }
+  .logo span { color: var(--muted); font-weight: 400; }
+  .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .progress-bar { width: 160px; height: 5px; background: var(--border); border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, var(--accent)); border-radius: 99px; transition: width 0.4s ease; width: 0%; }
+  .progress-text { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--muted); }
+  .sync-status {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--muted);
+  }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+  .sync-dot.syncing { background: #f59e0b; animation: pulse 1s infinite; }
+  .sync-dot.ok { background: #22c55e; }
+  .sync-dot.err { background: #f87171; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .hdr-btn {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--muted);
+    background: transparent; border: 1px solid var(--border); padding: 4px 10px;
+    border-radius: 5px; cursor: pointer; transition: all 0.15s;
+  }
+  .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* LEGEND */
+  .legend {
+    display: flex; gap: 1rem; flex-wrap: wrap;
+    padding: 0.6rem 2.5rem; border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .leg { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .leg-dot { width: 9px; height: 9px; border-radius: 3px; border: 1.5px solid; }
+
+  /* MAIN */
+  .main { padding: 2rem 2.5rem 4rem; max-width: 1100px; margin: 0 auto; }
+  .phase-block { margin-bottom: 2.5rem; }
+  .phase-header { display: flex; align-items: center; gap: 12px; margin-bottom: 1.25rem; }
+  .phase-line { flex: 1; height: 1px; background: var(--border); }
+  .phase-tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; font-weight: 600;
+    padding: 3px 10px; border-radius: 4px; border: 1px solid; letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .phase-title { font-size: 0.82rem; font-weight: 500; color: var(--muted); }
+  .phase-time { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--muted); }
+  .nodes-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* NODES */
+  .node {
+    background: var(--col-todo); border: 1.5px solid var(--col-todo-border);
+    border-radius: 10px; padding: 13px 15px; width: 195px;
+    cursor: pointer; transition: all 0.2s; user-select: none;
+  }
+  .node:hover:not(.locked) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .node.locked { background: var(--col-locked); border-color: var(--col-locked-border); cursor: not-allowed; opacity: 0.45; }
+  .node.active { background: var(--col-active); border-color: var(--col-active-border); }
+  .node.done { background: var(--col-done); border-color: var(--col-done-border); }
+  .node-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 600;
+    color: var(--col-todo-text); margin-bottom: 5px; display: flex; align-items: center; gap: 7px;
+  }
+  .node.active .node-title { color: var(--col-active-text); }
+  .node.done .node-title { color: var(--col-done-text); }
+  .node.locked .node-title { color: var(--col-locked-text); }
+  .node-desc { font-size: 0.7rem; color: var(--muted); line-height: 1.5; }
+  .node.done .node-desc { color: #4ade8044; }
+  .status-icon {
+    width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--col-todo-border);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 8px; transition: all 0.2s;
+  }
+  .node.active .status-icon { border-color: var(--col-active-border); background: #3b82f622; color: var(--col-active-text); }
+  .node.done .status-icon { border-color: var(--col-done-border); background: var(--col-done-border); color: #0f2318; }
+  .node.locked .status-icon { border-color: var(--col-locked-border); }
+  .prereq-tag {
+    display: inline-block; margin-top: 7px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; color: var(--muted);
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px;
+  }
+  .click-hint { font-size: 0.62rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 6px; opacity: 0.5; }
+
+  .phase-divider { display: flex; justify-content: center; margin: 0.25rem 0 1.75rem; }
+  .phase-arrow { display: flex; flex-direction: column; align-items: center; }
+  .phase-arrow-line { width: 2px; height: 28px; background: var(--border); }
+  .phase-arrow-head { border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid var(--border); }
+
+  .tooltip {
+    position: fixed; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 7px; padding: 8px 12px; font-size: 0.72rem; color: var(--muted);
+    max-width: 200px; pointer-events: none; z-index: 999; opacity: 0; transition: opacity 0.15s; line-height: 1.5;
+  }
+  .tooltip.visible { opacity: 1; }
+
+  @media (max-width: 600px) {
+    .main { padding: 1.25rem 1rem 3rem; }
+    header { padding: 1rem; }
+    .legend { padding: 0.5rem 1rem; }
+    .node { width: 155px; }
+    .progress-bar { width: 100px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SETUP OVERLAY -->
+<div id="setup-overlay">
+  <div class="setup-card">
+    <h2>// gist sync setup</h2>
+    <p>Unesi GitHub Personal Access Token da bi se tvoj napredak sinhronizovao između uređaja. Token se čuva samo lokalno u browseru.</p>
+    <div class="setup-steps">
+      <div class="setup-step">
+        <div class="step-num">1</div>
+        <div>Idi na <a href="https://github.com/settings/tokens/new" target="_blank">github.com/settings/tokens/new</a></div>
+      </div>
+      <div class="setup-step">
+        <div class="step-num">2</div>
+        <div>Note: <code style="color:var(--accent)">rust-roadmap</code> &nbsp;|&nbsp; Expiration: po želji &nbsp;|&nbsp; Scope: samo <strong style="color:var(--text)">gist</strong> ✓</div>
+      </div>
+      <div class="setup-step">
+        <div class="step-num">3</div>
+        <div>Kopiraj generisani token i nalepi ga ispod</div>
+      </div>
+    </div>
+    <div class="setup-input-wrap">
+      <label>GitHub token</label>
+      <input type="password" class="setup-input" id="tokenInput" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+    </div>
+    <button class="setup-btn" id="setupBtn" onclick="setupGist()">Poveži sa GitHub Gist</button>
+    <div class="setup-error" id="setupError"></div>
+    <div class="setup-skip"><button onclick="skipSetup()">Koristi bez synca (localStorage)</button></div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">rust<span>_</span>roadmap<span>.rs</span></div>
+  <div class="header-right">
+    <div class="sync-status">
+      <div class="sync-dot" id="syncDot"></div>
+      <span id="syncLabel">–</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText">0 / 20</div>
+    <button class="hdr-btn" onclick="resetAll()">reset</button>
+    <button class="hdr-btn" onclick="disconnectGist()">disconnect</button>
+  </div>
+</header>
+
+<div class="legend">
+  <div class="leg"><div class="leg-dot" style="border-color:#2a2f42;background:#1c2030"></div>nije početo</div>
+  <div class="leg"><div class="leg-dot" style="border-color:#3b82f6;background:#1a2535"></div>u toku</div>
+  <div class="leg"><div class="leg-dot" style="border-color:#22c55e;background:#0f2318"></div>završeno</div>
+  <div class="leg"><div class="leg-dot" style="border-color:#1e2030;background:#12121a"></div>zaključano</div>
+</div>
+
+<div class="main" id="main"></div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const NODES = {
+  "osnove":    { title: "Osnove & Ownership",  desc: "Borrow checker, move semantics, scope. Bez ovoga nema dalje.",          prereqs: [],                          phase: 1 },
+  "tipovi":    { title: "Tipovi & Struct",      desc: "Struct, enum sa podacima, tuple. Enum je moćniji nego u C#.",           prereqs: ["osnove"],                  phase: 1 },
+  "strings":   { title: "String vs &str",       desc: "Owned vs borrowed string. Česta zbrka na početku.",                   prereqs: ["osnove"],                  phase: 1 },
+  "heap":      { title: "Stack vs Heap",        desc: "Box<T> = malloc ali auto-free. Isti principi kao C.",                  prereqs: ["osnove"],                  phase: 1 },
+  "patterns":  { title: "Pattern Matching",     desc: "match je exhaustive — kompajler tera da pokriješ sve varijante.",       prereqs: ["tipovi","strings","heap"], phase: 1 },
+  "traits":    { title: "Traits",               desc: "Kao C# interface + Python protocol. Display, Clone, Iterator...",       prereqs: ["patterns"],                phase: 2 },
+  "result":    { title: "Result & Option",      desc: "Nema try/catch. ? operator propagira greške eksplicitno.",              prereqs: ["patterns"],                phase: 2 },
+  "generics":  { title: "Generics & Lifetimes", desc: "Generics kao C#. Lifetimes prate vek referenci — Rust-specific.",      prereqs: ["traits","result"],         phase: 2 },
+  "iteratori": { title: "Iteratori",            desc: "map, filter, collect — lazy kao Python generatori, type-safe.",         prereqs: ["traits"],                  phase: 2 },
+  "cargo":     { title: "Cargo & Crates",       desc: "pip + venv + setuptools u jednom. Cargo.toml bolji od requirements.",  prereqs: ["generics","iteratori"],    phase: 2 },
+  "threads":   { title: "Threads & Arc/Mutex",  desc: "Arc = shared ownership. Mutex = tvoj semafor. Nema data race.",         prereqs: ["cargo"],                   phase: 3 },
+  "async":     { title: "Async & Tokio",        desc: "Kao Python asyncio, ali brži. Tokio je de-facto async runtime.",       prereqs: ["cargo"],                   phase: 3 },
+  "channels":  { title: "Channels (mpsc)",      desc: "Send/receive između taskova. Sigurnije od deljenja memorije.",          prereqs: ["threads","async"],         phase: 3 },
+  "futures":   { title: "Futures & Streams",    desc: "Future = jedan async rezultat. Stream = async iterator. Osnova MCP-a.",prereqs: ["async","channels"],       phase: 3 },
+  "axum":      { title: "Axum",                 desc: "Tokio-native web framework. Kao Laravel bez magije — sve eksplicitno.",prereqs: ["futures"],                 phase: 4 },
+  "serde":     { title: "Serde (JSON)",         desc: "#[derive(Serialize, Deserialize)] + JSON. MCP koristi JSON-RPC.",       prereqs: ["futures"],                 phase: 4 },
+  "sqlx":      { title: "SQLx",                 desc: "Async SQL, kompajler proverava upite u build time.",                    prereqs: ["axum","serde"],            phase: 4 },
+  "tracing":   { title: "Tracing & Logging",    desc: "Strukturirani logovi za async kod. Essentials za produkciju.",          prereqs: ["axum","sqlx"],             phase: 4 },
+  "mcp":       { title: "MCP Protokol",         desc: "JSON-RPC 2.0 over stdio/SSE. Tools, resources, prompts.",              prereqs: ["serde","tracing"],         phase: 5 },
+  "rmcp":      { title: "rmcp & Tools",         desc: "#[tool] makro + ServerHandler trait = MCP server. Cilj!",              prereqs: ["mcp"],                     phase: 5 },
+};
+
+const PHASES = [
+  { id:1, label:"faza 01", title:"Osnove i ownership",       color:"#7c3aed", time:"2–3 nedelje",  nodes:["osnove","tipovi","strings","heap","patterns"] },
+  { id:2, label:"faza 02", title:"Traits, generics, errors", color:"#2563eb", time:"2–3 nedelje",  nodes:["traits","result","generics","iteratori","cargo"] },
+  { id:3, label:"faza 03", title:"Concurrency i async",      color:"#0891b2", time:"3–4 nedelje",  nodes:["threads","async","channels","futures"] },
+  { id:4, label:"faza 04", title:"Backend crates",           color:"#059669", time:"3–4 nedelje",  nodes:["axum","serde","sqlx","tracing"] },
+  { id:5, label:"faza 05", title:"MCP server",               color:"#e07b39", time:"3–5 nedelja",  nodes:["mcp","rmcp"] },
+];
+
+const GIST_FILENAME = "rust-roadmap-progress.json";
+const LS_TOKEN = "rr_gh_token";
+const LS_GIST  = "rr_gist_id";
+const LS_STATE = "rr_state";
+
+let state = {};
+let syncTimeout = null;
+
+function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function lsSet(k,v) { try { localStorage.setItem(k,v); } catch {} }
+function lsDel(k) { try { localStorage.removeItem(k); } catch {} }
+
+function getToken() { return lsGet(LS_TOKEN); }
+function getGistId() { return lsGet(LS_GIST); }
+
+function setSyncStatus(state) {
+  const dot = document.getElementById("syncDot");
+  const lbl = document.getElementById("syncLabel");
+  const map = {
+    idle:    ["", "–"],
+    syncing: ["syncing", "syncing..."],
+    ok:      ["ok", "synced"],
+    err:     ["err", "sync error"],
+    local:   ["", "local only"],
+  };
+  const [cls, text] = map[state] || ["",""];
+  dot.className = "sync-dot " + cls;
+  lbl.textContent = text;
+}
+
+async function setupGist() {
+  const token = document.getElementById("tokenInput").value.trim();
+  const errEl = document.getElementById("setupError");
+  const btn   = document.getElementById("setupBtn");
+  errEl.style.display = "none";
+  if (!token) { showSetupError("Unesi token."); return; }
+
+  btn.disabled = true;
+  btn.textContent = "Povezujem...";
+
+  try {
+    const existingId = await findExistingGist(token);
+    if (existingId) {
+      lsSet(LS_TOKEN, token);
+      lsSet(LS_GIST, existingId);
+      const remote = await loadFromGist(token, existingId);
+      if (remote) state = remote;
+      lsSet(LS_STATE, JSON.stringify(state));
+    } else {
+      const newId = await createGist(token, state);
+      lsSet(LS_TOKEN, token);
+      lsSet(LS_GIST, newId);
+    }
+    document.getElementById("setup-overlay").classList.add("hidden");
+    setSyncStatus("ok");
+    renderAll();
+  } catch(e) {
+    showSetupError("Greška: " + (e.message || "nevalidan token ili nema pristupa."));
+    btn.disabled = false;
+    btn.textContent = "Poveži sa GitHub Gist";
+  }
+}
+
+function showSetupError(msg) {
+  const el = document.getElementById("setupError");
+  el.textContent = msg;
+  el.style.display = "block";
+}
+
+function skipSetup() {
+  document.getElementById("setup-overlay").classList.add("hidden");
+  setSyncStatus("local");
+  renderAll();
+}
+
+function disconnectGist() {
+  if (!confirm("Odspoji GitHub sync? Progres ostaje lokalno.")) return;
+  lsDel(LS_TOKEN); lsDel(LS_GIST);
+  setSyncStatus("local");
+}
+
+async function findExistingGist(token) {
+  const res = await fetch("https://api.github.com/gists", {
+    headers: { Authorization: "token " + token, Accept: "application/vnd.github.v3+json" }
+  });
+  if (!res.ok) throw new Error("Token nije validan (status " + res.status + ")");
+  const gists = await res.json();
+  const found = gists.find(g => g.files && g.files[GIST_FILENAME]);
+  return found ? found.id : null;
+}
+
+async function createGist(token, data) {
+  const res = await fetch("https://api.github.com/gists", {
+    method: "POST",
+    headers: { Authorization: "token " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      description: "Rust Roadmap Progress",
+      public: false,
+      files: { [GIST_FILENAME]: { content: JSON.stringify(data, null, 2) } }
+    })
+  });
+  if (!res.ok) throw new Error("Ne mogu da kreiram Gist (status " + res.status + ")");
+  const json = await res.json();
+  return json.id;
+}
+
+async function loadFromGist(token, gistId) {
+  const res = await fetch("https://api.github.com/gists/" + gistId, {
+    headers: { Authorization: "token " + token }
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  const content = json.files?.[GIST_FILENAME]?.content;
+  if (!content) return null;
+  return JSON.parse(content);
+}
+
+async function saveToGist(token, gistId, data) {
+  const res = await fetch("https://api.github.com/gists/" + gistId, {
+    method: "PATCH",
+    headers: { Authorization: "token " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      files: { [GIST_FILENAME]: { content: JSON.stringify(data, null, 2) } }
+    })
+  });
+  if (!res.ok) throw new Error("Gist save failed");
+}
+
+function scheduleSave() {
+  lsSet(LS_STATE, JSON.stringify(state));
+  const token = getToken(); const gistId = getGistId();
+  if (!token || !gistId) return;
+  setSyncStatus("syncing");
+  if (syncTimeout) clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(async () => {
+    try {
+      await saveToGist(token, gistId, state);
+      setSyncStatus("ok");
+    } catch { setSyncStatus("err"); }
+  }, 800);
+}
+
+async function init() {
+  const saved = lsGet(LS_STATE);
+  if (saved) { try { state = JSON.parse(saved); } catch {} }
+
+  const token = getToken(); const gistId = getGistId();
+
+  if (token && gistId) {
+    document.getElementById("setup-overlay").classList.add("hidden");
+    setSyncStatus("syncing");
+    try {
+      const remote = await loadFromGist(token, gistId);
+      if (remote) { state = remote; lsSet(LS_STATE, JSON.stringify(state)); }
+      setSyncStatus("ok");
+    } catch { setSyncStatus("err"); }
+    renderAll();
+  } else if (lsGet("rr_skip")) {
+    document.getElementById("setup-overlay").classList.add("hidden");
+    setSyncStatus("local");
+    renderAll();
+  }
+}
+
+function resetAll() {
+  if (!confirm("Resetuj sav napredak?")) return;
+  state = {}; scheduleSave(); renderAll();
+}
+
+const STATE_CYCLE = ["todo","active","done"];
+function getNodeState(id) { return state[id] || "todo"; }
+function isUnlocked(id) { return NODES[id].prereqs.every(p => getNodeState(p) === "done"); }
+
+function cycleNode(id) {
+  if (!isUnlocked(id)) return;
+  const cur = getNodeState(id);
+  state[id] = STATE_CYCLE[(STATE_CYCLE.indexOf(cur)+1) % STATE_CYCLE.length];
+  scheduleSave(); renderAll();
+}
+
+function renderAll() {
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  PHASES.forEach((phase, pi) => {
+    const block = document.createElement("div"); block.className = "phase-block";
+    block.innerHTML = `
+      <div class="phase-header">
+        <div class="phase-line"></div>
+        <div class="phase-tag" style="color:${phase.color};border-color:${phase.color}44;background:${phase.color}11">${phase.label}</div>
+        <div class="phase-title">${phase.title}</div>
+        <div class="phase-line"></div>
+        <div class="phase-time">${phase.time}</div>
+      </div>
+    `;
+    const row = document.createElement("div"); row.className = "nodes-row";
+    phase.nodes.forEach(id => {
+      const nd = NODES[id]; const s = getNodeState(id); const unlocked = isUnlocked(id);
+      const cssState = unlocked ? s : "locked";
+      const icon = s==="done"?"✓":s==="active"?"●":"";
+      const prereqNames = nd.prereqs.map(p=>NODES[p].title).join(", ");
+      const node = document.createElement("div");
+      node.className = `node ${cssState}`; node.dataset.id = id;
+      node.innerHTML = `
+        <div class="node-title"><div class="status-icon">${unlocked?icon:""}</div>${nd.title}</div>
+        <div class="node-desc">${nd.desc}</div>
+        ${nd.prereqs.length && !unlocked ? `<div class="prereq-tag">čeka: ${prereqNames}</div>` : ""}
+        ${unlocked ? `<div class="click-hint">klikni za promenu statusa</div>` : ""}
+      `;
+      node.addEventListener("click", () => cycleNode(id));
+      if (!unlocked) {
+        node.addEventListener("mouseenter", e => showTooltip(e, "Otključaj nakon: "+prereqNames));
+        node.addEventListener("mousemove", moveTooltip);
+        node.addEventListener("mouseleave", hideTooltip);
+      }
+      row.appendChild(node);
+    });
+    block.appendChild(row);
+    if (pi < PHASES.length-1) {
+      block.innerHTML += `<div class="phase-divider"><div class="phase-arrow"><div class="phase-arrow-line"></div><div class="phase-arrow-head"></div></div></div>`;
+    }
+    main.appendChild(block);
+  });
+  updateProgress();
+}
+
+function updateProgress() {
+  const total = Object.keys(NODES).length;
+  const done  = Object.values(state).filter(v=>v==="done").length;
+  document.getElementById("progressFill").style.width = Math.round(done/total*100)+"%";
+  document.getElementById("progressText").textContent = done+" / "+total;
+}
+
+const tooltip = document.getElementById("tooltip");
+function showTooltip(e,t){ tooltip.textContent=t; tooltip.classList.add("visible"); moveTooltip(e); }
+function moveTooltip(e){ tooltip.style.left=(e.clientX+14)+"px"; tooltip.style.top=(e.clientY-10)+"px"; }
+function hideTooltip(){ tooltip.classList.remove("visible"); }
+
+init();
+</script>
+</body>
+</html>
